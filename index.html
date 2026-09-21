@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="面向开发者的 Model Context Protocol（MCP）中文教程，涵盖协议、实现、测试、安全与生产设计。">
+  <title>MCP 学习指南：从协议基础到生产实现</title>
+  <link rel="stylesheet" href="assets/styles.css">
+  <script src="assets/app.js" defer></script>
+</head>
+<body id="top">
+  <a class="skip-link" href="#main-content">跳至正文</a>
+  <progress id="reading-progress" aria-label="阅读进度" max="100" value="0">0%</progress>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div>
+        <p class="eyebrow">协议修订版 2026-07-28</p>
+        <h1>MCP 学习指南</h1>
+        <p class="subtitle">从协议概念、消息格式和服务端实现，逐步学习测试、安全与生产设计。</p>
+      </div>
+      <button id="theme-toggle" type="button" aria-label="切换深色或浅色主题" aria-pressed="false">切换主题</button>
+    </div>
+    <p class="version-notice" role="note"><strong>版本说明：</strong>本文与 MCP 协议修订版 <code>2026-07-28</code> 对齐。官方 Python 与 TypeScript SDK 的 API 仍可能变化，因此实际项目应固定依赖版本，并以对应版本的 SDK 文档为准。</p>
+  </header>
+
+  <div class="page-layout">
+    <nav id="site-nav" aria-label="章节导航">
+      <details class="mobile-nav">
+        <summary>章节目录</summary>
+        <ol>
+          <li><a href="#start" data-nav-target="start">学习准备</a></li>
+          <li><a href="#definition" data-nav-target="definition">定义与边界</a></li>
+          <li><a href="#architecture" data-nav-target="architecture">架构与信任边界</a></li>
+          <li><a href="#messages" data-nav-target="messages">JSON-RPC 消息</a></li>
+          <li><a href="#primitives" data-nav-target="primitives">服务端原语</a></li>
+          <li><a href="#client-features" data-nav-target="client-features">客户端能力</a></li>
+          <li><a href="#transports" data-nav-target="transports">传输方式</a></li>
+          <li><a href="#raw-exchange" data-nav-target="raw-exchange">原始协议交换</a></li>
+          <li><a href="#python-server" data-nav-target="python-server">Python 服务端</a></li>
+          <li><a href="#typescript-server" data-nav-target="typescript-server">TypeScript 服务端</a></li>
+          <li><a href="#client-cycle" data-nav-target="client-cycle">客户端决策周期</a></li>
+          <li><a href="#inspector" data-nav-target="inspector">Inspector 调试</a></li>
+          <li><a href="#authorization" data-nav-target="authorization">授权</a></li>
+          <li><a href="#security" data-nav-target="security">安全设计</a></li>
+          <li><a href="#production" data-nav-target="production">生产设计</a></li>
+          <li><a href="#decisions" data-nav-target="decisions">误区与选择指南</a></li>
+          <li><a href="#exercises" data-nav-target="exercises">练习</a></li>
+          <li><a href="#glossary" data-nav-target="glossary">术语、清单与来源</a></li>
+        </ol>
+      </details>
+      <ol class="desktop-nav">
+        <li><a href="#start" data-nav-target="start">学习准备</a></li>
+        <li><a href="#definition" data-nav-target="definition">定义与边界</a></li>
+        <li><a href="#architecture" data-nav-target="architecture">架构与信任边界</a></li>
+        <li><a href="#messages" data-nav-target="messages">JSON-RPC 消息</a></li>
+        <li><a href="#primitives" data-nav-target="primitives">服务端原语</a></li>
+        <li><a href="#client-features" data-nav-target="client-features">客户端能力</a></li>
+        <li><a href="#transports" data-nav-target="transports">传输方式</a></li>
+        <li><a href="#raw-exchange" data-nav-target="raw-exchange">原始协议交换</a></li>
+        <li><a href="#python-server" data-nav-target="python-server">Python 服务端</a></li>
+        <li><a href="#typescript-server" data-nav-target="typescript-server">TypeScript 服务端</a></li>
+        <li><a href="#client-cycle" data-nav-target="client-cycle">客户端决策周期</a></li>
+        <li><a href="#inspector" data-nav-target="inspector">Inspector 调试</a></li>
+        <li><a href="#authorization" data-nav-target="authorization">授权</a></li>
+        <li><a href="#security" data-nav-target="security">安全设计</a></li>
+        <li><a href="#production" data-nav-target="production">生产设计</a></li>
+        <li><a href="#decisions" data-nav-target="decisions">误区与选择指南</a></li>
+        <li><a href="#exercises" data-nav-target="exercises">练习</a></li>
+        <li><a href="#glossary" data-nav-target="glossary">术语、清单与来源</a></li>
+      </ol>
+    </nav>
+
+    <main id="main-content" tabindex="-1">
+      <article>
+        <section id="start" aria-labelledby="start-title">
+          <p class="section-kicker">01 · 开始之前</p>
+          <h2 id="start-title">学习准备与建议顺序</h2>
+          <p>MCP 是应用协议，不是模型训练方法。学习者需要理解 HTTP、进程标准输入输出、JSON、异步调用和基本权限控制。不了解 JSON-RPC 也可以继续，因为本文会说明其消息结构。</p>
+          <h3>先备知识</h3>
+          <ul>
+            <li>能够阅读 JSON，并区分对象、数组、字符串、数字与 <code>null</code>。</li>
+            <li>知道客户端发送请求、服务端返回结果这一基本通信过程。</li>
+            <li>能够使用 Python 3.11+ 或 Node.js 22.19+ 执行示例。</li>
+            <li>理解环境变量不应写入公开代码库。</li>
+          </ul>
+          <h3>建议学习顺序</h3>
+          <ol>
+            <li>先确定 MCP 解决的问题以及不解决的问题。</li>
+            <li>再理解 host、client、server 和两层协议结构。</li>
+            <li>随后阅读 JSON-RPC、原语、能力声明和传输方式。</li>
+            <li>然后实现一个服务端，并使用 Inspector 检查消息与结果。</li>
+            <li>最后处理授权、安全、重试、可观测性和兼容性。</li>
+          </ol>
+          <aside class="note" aria-label="学习提示">
+            <strong>建议：</strong>先完成 stdio 示例，因为它不需要部署 HTTP 服务。理解消息语义之后，再研究远程服务与 OAuth 2.1。
+          </aside>
+        </section>
+
+        <section id="definition" aria-labelledby="definition-title">
+          <p class="section-kicker">02 · 基本概念</p>
+          <h2 id="definition-title">MCP 的精确定义、范围与限制</h2>
+          <p><strong>Model Context Protocol（MCP）</strong>是一项开放协议，用于规范 LLM 应用与外部数据源、工具及预定义提示之间的通信。它定义消息、能力、数据类型和传输要求，因此不同实现可以依照同一协议协作。</p>
+          <p>MCP 规定“如何描述与请求能力”，但是不规定模型如何推理，也不保证工具结果正确。host 仍需决定何时向模型提供信息、何时请求用户确认，以及如何处理服务端返回的数据。</p>
+          <table>
+            <caption>MCP 的范围</caption>
+            <thead><tr><th scope="col">属于 MCP</th><th scope="col">不属于 MCP</th></tr></thead>
+            <tbody>
+              <tr><td>工具、资源、提示及客户端能力的协议定义</td><td>模型训练、微调和推理算法</td></tr>
+              <tr><td>JSON-RPC 请求、响应、通知与错误</td><td>保证模型一定选择正确工具</td></tr>
+              <tr><td>stdio 与 Streamable HTTP 的传输约束</td><td>业务数据库的一致性设计</td></tr>
+              <tr><td>HTTP 场景下的授权框架</td><td>替代组织现有的身份与权限治理</td></tr>
+              <tr><td>能力声明与版本协商</td><td>自动判定服务端代码可信</td></tr>
+            </tbody>
+          </table>
+          <h3>三个常见使用场景</h3>
+          <ul>
+            <li>代码编辑器通过 MCP 服务查询项目文档、问题记录或构建状态。</li>
+            <li>对话应用通过 MCP 工具查询库存，并在用户确认后创建订单。</li>
+            <li>内部助手把只读知识库作为资源，把固定分析流程作为提示。</li>
+          </ul>
+        </section>
+
+        <section id="architecture" aria-labelledby="architecture-title">
+          <p class="section-kicker">03 · 架构</p>
+          <h2 id="architecture-title">Host、Client、Server 与信任边界</h2>
+          <p>MCP 采用 host—client—server 架构。host 是面向用户的 LLM 应用；host 为每个服务端管理一个 client；每个 client 与一个特定 server 通信。一个 host 可以同时管理多个 client，但是各服务端应保持独立的权限和上下文范围。</p>
+          <table>
+            <caption>核心角色与职责</caption>
+            <thead><tr><th scope="col">角色</th><th scope="col">主要职责</th><th scope="col">不得默认信任的内容</th></tr></thead>
+            <tbody>
+              <tr><td>Host</td><td>管理用户界面、模型、权限确认、多个 client 与上下文选择</td><td>服务端描述、工具结果、资源内容</td></tr>
+              <tr><td>Client</td><td>处理协议版本、能力声明、请求关联、传输和结果解析</td><td>未经验证的服务端消息</td></tr>
+              <tr><td>Server</td><td>公开工具、资源和提示，并执行范围明确的业务逻辑</td><td>客户端身份声明、模型生成的参数</td></tr>
+              <tr><td>Transport</td><td>承载 JSON-RPC 消息</td><td>不等同于身份认证或业务授权</td></tr>
+              <tr><td>Data layer</td><td>定义 JSON-RPC 消息、原语、能力和生命周期语义</td><td>不替代传输层安全</td></tr>
+            </tbody>
+          </table>
+          <h3>信任边界</h3>
+          <p>每个 server 都是独立安全主体。host 不应把一个 server 的凭据、资源或完整对话自动提供给另一个 server。远程 server 与本地子进程也应采用相同的输入验证原则，因为本地代码同样可能包含缺陷或不可信依赖。</p>
+          <pre class="diagram" role="img" aria-label="MCP 架构文本图"><code>用户
+  │ 明确授权与确认
+  ▼
+Host（模型、界面、策略、审计）
+  ├── Client A ── stdio ───────── Server A（本地文件）
+  └── Client B ── HTTPS/JSON-RPC ─ Server B（远程业务 API）
+
+边界 1：用户 ↔ Host       边界 2：Host/Client ↔ Server
+边界 3：Server ↔ 数据库   边界 4：Server ↔ 第三方 API</code></pre>
+          <p>在 <code>2026-07-28</code> 修订版中，请求是自包含的。旧版的 <code>initialize</code>/<code>notifications/initialized</code> 握手与协议级会话已经移除。客户端可以先调用 <code>server/discover</code> 选择版本，也可以直接在每个请求的 <code>_meta</code> 中声明版本和能力。</p>
+        </section>
+
+        <section id="messages" aria-labelledby="messages-title">
+          <p class="section-kicker">04 · 协议消息</p>
+          <h2 id="messages-title">JSON-RPC、错误与能力协商</h2>
+          <p>MCP 消息遵循 JSON-RPC 2.0。请求必须包含 <code>jsonrpc</code>、非空且当前唯一的 <code>id</code>、<code>method</code>，并可包含 <code>params</code>。响应以同一 <code>id</code> 关联请求，并且只包含 <code>result</code> 或 <code>error</code> 之一。</p>
+          <table>
+            <caption>四类基础消息</caption>
+            <thead><tr><th scope="col">类型</th><th scope="col">必需成员</th><th scope="col">是否有响应</th></tr></thead>
+            <tbody>
+              <tr><td>请求</td><td><code>jsonrpc</code>、<code>id</code>、<code>method</code></td><td>是</td></tr>
+              <tr><td>成功响应</td><td><code>jsonrpc</code>、<code>id</code>、<code>result</code></td><td>不适用</td></tr>
+              <tr><td>错误响应</td><td><code>jsonrpc</code>、<code>id</code>、<code>error.code</code>、<code>error.message</code></td><td>不适用</td></tr>
+              <tr><td>通知</td><td><code>jsonrpc</code>、<code>method</code></td><td>否，而且不得包含 <code>id</code></td></tr>
+            </tbody>
+          </table>
+          <h3>请求与成功响应</h3>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制 JSON-RPC 请求与响应">复制</button>
+            <pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 17,
+  "method": "tools/list",
+  "params": {
+    "_meta": {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientCapabilities": {},
+      "io.modelcontextprotocol/clientInfo": {
+        "name": "study-client",
+        "version": "1.0.0"
+      }
+    }
+  }
+}
+
+{
+  "jsonrpc": "2.0",
+  "id": 17,
+  "result": {
+    "tools": [],
+    "_meta": {
+      "io.modelcontextprotocol/serverInfo": {
+        "name": "study-server",
+        "version": "1.0.0"
+      }
+    }
+  }
+}</code></pre>
+          </div>
+          <h3>错误与通知</h3>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制错误与通知示例">复制</button>
+            <pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 18,
+  "error": {
+    "code": -32602,
+    "message": "Invalid params",
+    "data": { "field": "city" }
+  }
+}
+
+{
+  "jsonrpc": "2.0",
+  "method": "notifications/tools/list_changed"
+}</code></pre>
+          </div>
+          <p>通用错误应使用 JSON-RPC 标准代码：<code>-32700</code> 表示解析失败，<code>-32600</code> 表示无效请求，<code>-32601</code> 表示方法不存在，<code>-32602</code> 表示参数无效，<code>-32603</code> 表示内部错误。实现自定义错误时，只能使用规范允许的代码范围，并应避免在错误文本中暴露凭据或内部路径。</p>
+          <h3>能力与版本</h3>
+          <p><code>server/discover</code> 用于查询服务端支持的协议版本、能力和身份。对于普通业务请求，客户端必须在 <code>_meta.io.modelcontextprotocol/protocolVersion</code> 中提供版本，并在 <code>_meta.io.modelcontextprotocol/clientCapabilities</code> 中提供客户端能力。服务端必须只使用客户端已经声明的能力。</p>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制服务发现消息">复制</button>
+            <pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "server/discover",
+  "params": {}
+}
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocolVersions": ["2026-07-28", "2025-11-25"],
+    "capabilities": {
+      "tools": { "listChanged": true },
+      "resources": {},
+      "prompts": {}
+    },
+    "serverInfo": {
+      "name": "study-server",
+      "version": "1.0.0"
+    }
+  }
+}</code></pre>
+          </div>
+        </section>
+
+        <section id="primitives" aria-labelledby="primitives-title">
+          <p class="section-kicker">05 · 服务端能力</p>
+          <h2 id="primitives-title">Tools、Resources、Resource Templates 与 Prompts</h2>
+          <table>
+            <caption>服务端原语对比</caption>
+            <thead><tr><th scope="col">原语</th><th scope="col">主要用途</th><th scope="col">典型控制者</th><th scope="col">示例</th></tr></thead>
+            <tbody>
+              <tr><td>Tool</td><td>计算、调用 API 或改变状态</td><td>模型提出调用，host 可要求用户确认</td><td><code>create_ticket</code></td></tr>
+              <tr><td>Resource</td><td>读取由 URI 标识的内容</td><td>应用或模型读取</td><td><code>policy://travel</code></td></tr>
+              <tr><td>Resource template</td><td>声明带参数的 URI 模板</td><td>应用按参数解析 URI</td><td><code>customer://{id}</code></td></tr>
+              <tr><td>Prompt</td><td>生成可复用的消息模板</td><td>用户明确选择</td><td><code>review_incident</code></td></tr>
+            </tbody>
+          </table>
+          <h3>工具定义</h3>
+          <p>工具至少具有名称、描述和输入 JSON Schema。输出可以包含文本、图像、音频、资源链接或嵌入资源；服务端还可以声明输出 Schema，并提供结构化结果。描述会进入模型上下文，因此必须简洁、准确，并明确副作用。</p>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制工具定义">复制</button>
+            <pre><code class="language-json">{
+  "name": "convert_temperature",
+  "title": "温度换算",
+  "description": "把摄氏温度换算为华氏温度；不产生外部副作用。",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "celsius": { "type": "number" }
+    },
+    "required": ["celsius"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "fahrenheit": { "type": "number" }
+    },
+    "required": ["fahrenheit"]
+  }
+}</code></pre>
+          </div>
+          <h3>资源与资源模板</h3>
+          <p>资源适合可寻址、以读取为主的内容。固定资源可使用确定 URI；同一类对象具有多个实例时，可以使用 URI 模板。资源内容仍是不可信输入，host 不应把其中的命令性文本视为系统指令。</p>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制资源模板定义">复制</button>
+            <pre><code class="language-json">{
+  "uriTemplate": "customer://{customerId}/profile",
+  "name": "customer-profile",
+  "title": "客户资料",
+  "description": "按客户标识读取资料；只读。",
+  "mimeType": "application/json"
+}</code></pre>
+          </div>
+          <h3>提示</h3>
+          <p>提示是服务端提供的参数化消息模板。它适合由用户选择的固定工作流程，但是不适合执行业务副作用。客户端应在使用前显示提示名称、参数和生成内容。</p>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制提示结果">复制</button>
+            <pre><code class="language-json">{
+  "description": "审阅一次事故记录",
+  "messages": [
+    {
+      "role": "user",
+      "content": {
+        "type": "text",
+        "text": "请按时间、影响、原因和改进项审阅事故 INC-42。"
+      }
+    }
+  ]
+}</code></pre>
+          </div>
+        </section>
+
+        <section id="client-features" aria-labelledby="client-features-title">
+          <p class="section-kicker">06 · 客户端能力</p>
+          <h2 id="client-features-title">Sampling、Elicitation、Roots 与用户同意</h2>
+          <p>客户端能力允许 server 在处理原始请求期间要求额外输入。<code>2026-07-28</code> 使用 Multi Round-Trip Requests（MRTR）：server 返回 <code>input_required</code>，client 完成请求后，以新的 JSON-RPC <code>id</code> 重试原方法，并把结果放入 <code>inputResponses</code>。server 不再通过独立反向请求要求客户端处理这些能力。</p>
+          <table>
+            <caption>客户端原语</caption>
+            <thead><tr><th scope="col">能力</th><th scope="col">作用</th><th scope="col">用户控制要求</th><th scope="col">版本状态</th></tr></thead>
+            <tbody>
+              <tr><td>Sampling</td><td>由客户端选择模型并生成内容</td><td>允许检查提示、限制模型和审核结果</td><td>2026-07-28 中保留但已弃用</td></tr>
+              <tr><td>Elicitation</td><td>请求用户提供结构化字段或通过 URL 完成外部交互</td><td>必须允许接受、拒绝或取消；不得索取敏感凭据</td><td>当前客户端能力</td></tr>
+              <tr><td>Roots</td><td>声明 server 可参考的文件系统根 URI</td><td>用户决定公开哪些目录</td><td>2026-07-28 中保留但已弃用</td></tr>
+            </tbody>
+          </table>
+          <p>弃用不等于立即删除。新实现应避免把关键设计建立在已弃用能力上，同时需要理解这些能力，以便与旧客户端或过渡期实现兼容。</p>
+          <h3>MRTR：请求用户输入</h3>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制 MRTR 示例">复制</button>
+            <pre><code class="language-json">{
+  "jsonrpc": "2.0",
+  "id": 21,
+  "result": {
+    "resultType": "input_required",
+    "inputRequests": {
+      "confirm_create": {
+        "method": "elicitation/create",
+        "params": {
+          "mode": "form",
+          "message": "是否创建工单？",
+          "requestedSchema": {
+            "type": "object",
+            "properties": {
+              "confirmed": { "type": "boolean" }
+            },
+            "required": ["confirmed"]
+          }
+        }
+      }
+    },
+    "requestState": "opaque-state-from-server"
+  }
+}
+
+{
+  "jsonrpc": "2.0",
+  "id": 22,
+  "method": "tools/call",
+  "params": {
+    "name": "create_ticket",
+    "arguments": { "title": "数据库延迟" },
+    "inputResponses": {
+      "confirm_create": {
+        "action": "accept",
+        "content": { "confirmed": true }
+      }
+    },
+    "requestState": "opaque-state-from-server",
+    "_meta": {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientCapabilities": {
+        "elicitation": { "form": {} }
+      }
+    }
+  }
+}</code></pre>
+          </div>
+          <p><code>requestState</code> 应被视为不透明值。client 不应解析或修改它。server 必须再次验证原始参数、用户回复、权限和幂等键，因为第二次请求是新的请求。</p>
+        </section>
+
+        <section id="transports" aria-labelledby="transports-title">
+          <p class="section-kicker">07 · 传输</p>
+          <h2 id="transports-title">stdio 与 Streamable HTTP</h2>
+          <p>传输层负责承载协议消息，但是不改变 JSON-RPC 方法语义。选择传输时，应根据进程位置、部署方式、身份要求和并发规模判断。</p>
+          <table>
+            <caption>传输方式选择</caption>
+            <thead><tr><th scope="col">项目</th><th scope="col">stdio</th><th scope="col">Streamable HTTP</th></tr></thead>
+            <tbody>
+              <tr><td>进程关系</td><td>client 启动本地 server 子进程</td><td>server 是独立 HTTP 服务</td></tr>
+              <tr><td>消息承载</td><td>stdin/stdout，每行一个完整 JSON-RPC 消息</td><td>每个消息使用新的 HTTP POST</td></tr>
+              <tr><td>典型场景</td><td>桌面应用、编辑器扩展、本地开发工具</td><td>共享服务、集中部署、多用户系统</td></tr>
+              <tr><td>授权</td><td>通常依赖本地进程与文件权限</td><td>适用 MCP OAuth 2.1 授权框架</td></tr>
+              <tr><td>主要风险</td><td>环境变量泄露、工作目录过宽、stdout 混入日志</td><td>令牌泄露、来源校验不足、代理超时、跨租户访问</td></tr>
+            </tbody>
+          </table>
+          <h3>stdio 要求</h3>
+          <ul>
+            <li>server 从 stdin 读取 JSON-RPC，并向 stdout 写入协议消息。</li>
+            <li>日志应写入 stderr。stdout 中的普通日志会破坏消息解析。</li>
+            <li>client 应显式设置命令、参数、工作目录和允许的环境变量。</li>
+            <li>进程退出时，client 应区分正常关闭、启动失败和请求超时。</li>
+          </ul>
+          <h3>Streamable HTTP 要求</h3>
+          <ul>
+            <li>server 提供单一 MCP 端点，并接受 HTTP POST。</li>
+            <li>client 对每个 JSON-RPC 请求或通知分别发送新的 POST。</li>
+            <li><code>Accept</code> 应同时声明 <code>application/json</code> 与 <code>text/event-stream</code>。</li>
+            <li>server 可返回单个 JSON 对象，也可为当前请求返回 SSE 流。</li>
+            <li>长期变更通知通过 <code>subscriptions/listen</code> 的响应流传递，而不是依赖协议级会话。</li>
+          </ul>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制 HTTP 请求示例">复制</button>
+            <pre><code class="language-http">POST /mcp HTTP/1.1
+Host: mcp.example.com
+Content-Type: application/json
+Accept: application/json, text/event-stream
+Authorization: Bearer &lt;access-token&gt;
+MCP-Protocol-Version: 2026-07-28
+
+{"jsonrpc":"2.0","id":31,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}</code></pre>
+          </div>
+        </section>
+
+        <section id="raw-exchange" aria-labelledby="raw-exchange-title">
+          <p class="section-kicker">08 · 原始协议</p>
+          <h2 id="raw-exchange-title">一组最小 JSON-RPC 交换</h2>
+          <p>下面的四条消息展示版本查询、工具枚举与工具调用。为了便于阅读，消息采用缩进格式；stdio 实际传输通常把每条消息序列化为单行。</p>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制完整原始交换">复制</button>
+            <pre><code class="language-json">// 1. client → server：查询版本与能力
+{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{}}
+
+// 2. server → client：声明服务端能力
+{"jsonrpc":"2.0","id":1,"result":{"protocolVersions":["2026-07-28"],"capabilities":{"tools":{}},"serverInfo":{"name":"unit-converter","version":"1.0.0"}}}
+
+// 3. client → server：枚举工具
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"raw-client","version":"1.0.0"}}}}
+
+// 4. server → client：返回工具定义
+{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"convert_temperature","description":"Convert Celsius to Fahrenheit","inputSchema":{"type":"object","properties":{"celsius":{"type":"number"}},"required":["celsius"],"additionalProperties":false},"outputSchema":{"type":"object","properties":{"fahrenheit":{"type":"number"}},"required":["fahrenheit"]}}]}}
+
+// 5. client → server：调用工具
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"convert_temperature","arguments":{"celsius":20},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}
+
+// 6. server → client：返回文本与结构化结果
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"20 °C = 68 °F"}],"structuredContent":{"fahrenheit":68},"isError":false}}</code></pre>
+          </div>
+          <p>示例中的注释不是合法 JSON，因此复制到程序前应删除注释。协议实现还应限制消息大小、验证 Schema、处理取消和超时，并为请求标识记录关联日志。</p>
+        </section>
+
+        <section id="python-server" aria-labelledby="python-server-title">
+          <p class="section-kicker">09 · Python 实现</p>
+          <h2 id="python-server-title">完整的 Python MCP 服务端</h2>
+          <p>以下示例针对官方 Python SDK v2 的 <code>MCPServer</code> API，并使用 stdio。它提供一个工具、一个固定资源、一个资源模板和一个提示。安装命令为 <code>python -m pip install "mcp[cli]&gt;=2,&lt;3"</code>。</p>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制完整 Python 服务端">复制</button>
+            <pre><code class="language-python">"""study_server.py — MCP 2026-07-28 教学服务端。"""
+
+from __future__ import annotations
+
+from mcp.server import MCPServer
+
+mcp = MCPServer("study-python-server")
+
+CUSTOMERS = {
+    "c-100": {"id": "c-100", "name": "Lin", "tier": "standard"},
+    "c-200": {"id": "c-200", "name": "Chen", "tier": "premium"},
+}
+
+
+@mcp.tool()
+def convert_temperature(celsius: float) -&gt; dict[str, float]:
+    """把摄氏温度换算为华氏温度；不访问网络，也不修改外部状态。"""
+    if not -273.15 &lt;= celsius &lt;= 1_000:
+        raise ValueError("celsius must be between -273.15 and 1000")
+    fahrenheit = round(celsius * 9 / 5 + 32, 2)
+    return {"fahrenheit": fahrenheit}
+
+
+@mcp.resource("policy://support")
+def support_policy() -&gt; str:
+    """返回只读的客户支持政策。"""
+    return "标准客户：2 个工作日内响应；高级客户：4 小时内响应。"
+
+
+@mcp.resource("customer://{customer_id}/profile")
+def customer_profile(customer_id: str) -&gt; dict[str, str]:
+    """按客户标识返回只读资料。"""
+    if customer_id not in CUSTOMERS:
+        raise ValueError("unknown customer_id")
+    return CUSTOMERS[customer_id]
+
+
+@mcp.prompt()
+def review_ticket(ticket_id: str, severity: str = "medium") -&gt; str:
+    """生成工单审阅提示。"""
+    allowed = {"low", "medium", "high"}
+    if severity not in allowed:
+        raise ValueError(f"severity must be one of {sorted(allowed)}")
+    return (
+        f"请审阅工单 {ticket_id}。严重程度：{severity}。"
+        "请列出事实、待确认信息、风险和下一步建议，不要执行修改操作。"
+    )
+
+
+if __name__ == "__main__":
+    # 默认使用 stdio。协议消息使用 stdout，普通日志应使用 stderr。
+    mcp.run()</code></pre>
+          </div>
+          <h3>启动与检查</h3>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制 Python 执行命令">复制</button>
+            <pre><code class="language-bash">python -m venv .venv
+. .venv/bin/activate
+python -m pip install "mcp[cli]&gt;=2,&lt;3"
+python study_server.py</code></pre>
+          </div>
+          <p>直接执行时，进程会等待 client 从 stdin 提供协议消息，因此终端可能没有普通文本输出。这是预期行为。开发期间更适合使用 Inspector 启动并检查该文件。</p>
+          <p><a href="examples/python/mcp_server.py">查看仓库中的完整 Python 示例</a>。该文件还包括 Pydantic 参数约束和业务错误转换。</p>
+          <h3>实现说明</h3>
+          <ul>
+            <li>类型标注用于生成输入或输出 Schema，但是业务范围仍需显式验证。</li>
+            <li>工具文档字符串会影响模型选择，因此需要说明用途、副作用和约束。</li>
+            <li>资源函数应保持只读语义；需要修改状态时应改用工具。</li>
+            <li>示例使用内存数据。生产服务应增加认证、租户隔离、审计和超时。</li>
+          </ul>
+        </section>
+
+        <section id="typescript-server" aria-labelledby="typescript-server-title">
+          <p class="section-kicker">10 · TypeScript 实现</p>
+          <h2 id="typescript-server-title">完整的 TypeScript MCP 服务端</h2>
+          <p>以下示例针对官方 TypeScript SDK v2。它使用 <code>@modelcontextprotocol/server</code>、stdio 子路径和 Zod v4，并提供一个具有结构化结果的工具。</p>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制完整 TypeScript 服务端">复制</button>
+            <pre><code class="language-typescript">// server.ts — MCP 2026-07-28 教学服务端
+import { McpServer } from "@modelcontextprotocol/server";
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import * as z from "zod/v4";
+
+const server = new McpServer({
+  name: "study-typescript-server",
+  version: "1.0.0",
+});
+
+server.registerTool(
+  "convert_temperature",
+  {
+    title: "温度换算",
+    description: "把摄氏温度换算为华氏温度；不产生外部副作用。",
+    inputSchema: z.object({
+      celsius: z.number().min(-273.15).max(1000),
+    }),
+    outputSchema: z.object({
+      fahrenheit: z.number(),
+    }),
+  },
+  async ({ celsius }) =&gt; {
+    const fahrenheit = Math.round((celsius * 9 / 5 + 32) * 100) / 100;
+    return {
+      content: [
+        { type: "text", text: `${celsius} °C = ${fahrenheit} °F` },
+      ],
+      structuredContent: { fahrenheit },
+    };
+  },
+);
+
+async function main(): Promise&lt;void&gt; {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+main().catch((error: unknown) =&gt; {
+  // stderr 可用于诊断；不要向 stdout 写普通日志。
+  console.error("MCP server failed:", error);
+  process.exitCode = 1;
+});</code></pre>
+          </div>
+          <h3>项目配置与执行</h3>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制 TypeScript 配置与命令">复制</button>
+            <pre><code class="language-json">{
+  "name": "mcp-study-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "start": "tsx server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}</code></pre>
+          </div>
+          <p>同时创建 <code>tsconfig.json</code>，使类型检查采用 Node.js 的 ESM 解析规则。</p>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制 TypeScript 编译配置">复制</button>
+            <pre><code class="language-json">{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["server.ts"]
+}</code></pre>
+          </div>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制 TypeScript 执行命令">复制</button>
+            <pre><code class="language-bash">npm install
+npm run build
+npm start</code></pre>
+          </div>
+          <p>SDK 主版本之间可能存在导入路径与类型差异。复制示例之前，应核对已安装包的主版本，并阅读官方迁移文档。依赖范围适合教学；生产项目更适合使用锁文件和自动化升级验证。</p>
+          <p><a href="examples/typescript/server.ts">查看仓库中的完整 TypeScript 示例</a>。该文件还包括资源、提示模板和结构化错误响应。</p>
+        </section>
+
+        <section id="client-cycle" aria-labelledby="client-cycle-title">
+          <p class="section-kicker">11 · Host 逻辑</p>
+          <h2 id="client-cycle-title">简化的 MCP 客户端决策周期</h2>
+          <p>协议客户端只负责通信仍然不够。host 还需决定哪些工具可提供给模型、哪些调用需要用户确认，以及如何把结果返回模型。下面是一个有明确限制的伪代码示例。</p>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制客户端决策周期伪代码">复制</button>
+            <pre><code class="language-python">async def answer_user(user_text: str) -&gt; str:
+    tools = await mcp_client.list_tools()
+    allowed_tools = policy.filter_tools(
+        tools,
+        user=user,
+        conversation=conversation,
+    )
+
+    for step in range(MAX_MODEL_STEPS):
+        model_reply = await llm.generate(
+            messages=conversation,
+            tools=allowed_tools,
+        )
+
+        if model_reply.final_text is not None:
+            return model_reply.final_text
+
+        call = validate_single_tool_call(model_reply.tool_call, allowed_tools)
+
+        if policy.requires_confirmation(call):
+            approved = await ui.confirm(
+                tool_name=call.name,
+                arguments=redact_secrets(call.arguments),
+                consequence=policy.describe_consequence(call),
+            )
+            if not approved:
+                conversation.add_tool_result(call.id, "用户拒绝此操作")
+                continue
+
+        try:
+            result = await with_timeout(
+                mcp_client.call_tool(call.name, call.arguments),
+                seconds=15,
+            )
+        except TimeoutError:
+            result = {"isError": True, "message": "工具调用超时"}
+
+        audit.write(
+            user_id=user.id,
+            tool=call.name,
+            argument_digest=digest(call.arguments),
+            outcome=summarize(result),
+        )
+        conversation.add_tool_result(call.id, sanitize_tool_result(result))
+
+    return "已达到本次请求的工具调用次数限制。"</code></pre>
+          </div>
+          <ol>
+            <li><strong>发现：</strong>查询能力和工具，并根据身份与任务过滤。</li>
+            <li><strong>推理：</strong>向模型提供最少必要的工具定义。</li>
+            <li><strong>验证：</strong>检查名称、参数 Schema、大小、租户和权限。</li>
+            <li><strong>确认：</strong>对写操作、费用、外发数据或高风险操作请求用户同意。</li>
+            <li><strong>执行：</strong>设置超时、取消和并发限制。</li>
+            <li><strong>处理结果：</strong>把结果视为不可信数据，删除不应进入模型上下文的字段。</li>
+            <li><strong>审计：</strong>记录主体、工具、参数摘要、授权依据、结果与耗时。</li>
+          </ol>
+          <p>循环必须具有最大步数与总时间限制。模型请求重试并不代表业务操作可以安全重试，因此 client 必须依据工具的幂等语义决定是否重试。</p>
+        </section>
+
+        <section id="inspector" aria-labelledby="inspector-title">
+          <p class="section-kicker">12 · 测试</p>
+          <h2 id="inspector-title">使用 MCP Inspector 检查与调试</h2>
+          <p>MCP Inspector 是官方交互式开发工具。当前文档要求 Node.js 22.19.0 或更新版本。Inspector 可以查看服务端能力、原语列表、输入 Schema、调用结果与协议消息。</p>
+          <h3>检查 stdio 服务端</h3>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制 Inspector stdio 命令">复制</button>
+            <pre><code class="language-bash">npx @modelcontextprotocol/inspector python study_server.py</code></pre>
+          </div>
+          <h3>检查 Streamable HTTP 服务端</h3>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制 Inspector HTTP 命令">复制</button>
+            <pre><code class="language-bash">npx @modelcontextprotocol/inspector --transport http \
+  --server-url http://127.0.0.1:8000/mcp</code></pre>
+          </div>
+          <h3>逐项检查</h3>
+          <ol>
+            <li>确认发现结果中的协议版本、服务端身份和能力与实现一致。</li>
+            <li>确认工具、资源与提示列表稳定，并检查所有名称和描述。</li>
+            <li>为每个输入字段测试正常值、边界值、缺失值、错误类型和超长值。</li>
+            <li>确认工具错误以受控结果或规范错误返回，不包含堆栈、令牌和内部文件路径。</li>
+            <li>确认取消和超时不会留下未完成的写操作。</li>
+            <li>检查 stdout 是否只包含协议消息，并确认诊断信息位于 stderr。</li>
+          </ol>
+          <table>
+            <caption>常见故障定位</caption>
+            <thead><tr><th scope="col">现象</th><th scope="col">常见原因</th><th scope="col">检查方法</th></tr></thead>
+            <tbody>
+              <tr><td>stdio 服务无法解析</td><td>stdout 混入普通日志</td><td>把日志改为 stderr，并逐行检查输出</td></tr>
+              <tr><td>方法不存在</td><td>SDK 版本或方法名称不一致</td><td>查看发现结果和已安装依赖版本</td></tr>
+              <tr><td>参数无效</td><td>输入与 JSON Schema 不一致</td><td>在 Inspector 中检查实际参数与字段类型</td></tr>
+              <tr><td>HTTP 401</td><td>缺少令牌、scope 不足或 audience 错误</td><td>检查 <code>WWW-Authenticate</code> 与令牌声明</td></tr>
+              <tr><td>请求长时间无结果</td><td>外部依赖超时或 SSE 流未结束</td><td>检查分段耗时、代理配置与取消日志</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="authorization" aria-labelledby="authorization-title">
+          <p class="section-kicker">13 · 身份与权限</p>
+          <h2 id="authorization-title">HTTP 授权、OAuth 2.1 与最小权限</h2>
+          <p>MCP 的授权规范适用于基于 HTTP 的传输。受保护的 MCP server 是 OAuth 2.1 资源服务器，MCP client 是 OAuth 2.1 客户端，授权服务器负责用户交互与令牌签发。stdio 通常不使用这一 HTTP 授权流程。</p>
+          <h3>推荐流程</h3>
+          <ol>
+            <li>client 请求受保护资源，server 在需要授权时返回 <code>401 Unauthorized</code>。</li>
+            <li><code>WWW-Authenticate</code> 指向 OAuth 受保护资源元数据，并可说明所需 scope。</li>
+            <li>client 读取资源元数据和授权服务器元数据。</li>
+            <li>client 使用授权码流程和 PKCE 请求用户授权。</li>
+            <li>client 取得访问令牌后，再次请求 MCP 端点。</li>
+            <li>server 验证签名、签发者、有效期、scope、资源 audience 与其他约束。</li>
+          </ol>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制授权质询示例">复制</button>
+            <pre><code class="language-http">HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource", scope="reports:read"
+Content-Type: application/json
+
+{
+  "error": "insufficient_authorization"
+}</code></pre>
+          </div>
+          <h3>必须实施的验证</h3>
+          <ul>
+            <li><strong>最小权限：</strong>只请求当前操作所需 scope，并允许增量授权。</li>
+            <li><strong>Audience：</strong>server 必须拒绝签发给其他资源的访问令牌。</li>
+            <li><strong>Issuer：</strong>client 必须验证授权响应中存在的 <code>iss</code> 与已记录签发者一致。</li>
+            <li><strong>重定向 URI：</strong>client 和授权服务器必须严格匹配已注册 URI。</li>
+            <li><strong>PKCE：</strong>公共 client 不得依赖可提取的静态 client secret。</li>
+            <li><strong>令牌处理：</strong>令牌不得进入模型上下文、URL 查询参数、普通日志或工具结果。</li>
+          </ul>
+          <aside class="warning" aria-label="安全警告">
+            <strong>禁止令牌转发：</strong>MCP server 不应把收到的访问令牌直接提供给下游 API。下游服务需要独立的 audience 与令牌交换或独立授权，否则会破坏令牌边界。
+          </aside>
+        </section>
+
+        <section id="security" aria-labelledby="security-title">
+          <p class="section-kicker">14 · 安全</p>
+          <h2 id="security-title">提示注入、危险操作与审计</h2>
+          <p>MCP 扩大了模型可读取的数据和可请求的操作，因此安全控制必须位于模型之外。资源内容、工具描述、提示模板、工具结果和错误文本都属于不可信输入。它们不能修改系统策略，也不能自行取得更高权限。</p>
+          <table>
+            <caption>威胁与控制</caption>
+            <thead><tr><th scope="col">威胁</th><th scope="col">示例</th><th scope="col">主要控制</th></tr></thead>
+            <tbody>
+              <tr><td>提示注入</td><td>资源文本要求模型泄露其他 server 的数据</td><td>来源标记、上下文隔离、输出过滤、权限检查</td></tr>
+              <tr><td>恶意工具描述</td><td>描述声称调用无需用户批准</td><td>忽略描述中的策略声明，采用 host 本地策略</td></tr>
+              <tr><td>参数外泄</td><td>模型把对话中的密钥作为工具参数</td><td>参数预览、秘密检测、字段级允许列表</td></tr>
+              <tr><td>破坏性操作</td><td>删除数据、发送消息、产生费用</td><td>显式确认、分级权限、预览、幂等键、恢复机制</td></tr>
+              <tr><td>结果污染</td><td>工具结果包含伪造的系统指令</td><td>把结果标记为数据，限制可进入模型的字段</td></tr>
+              <tr><td>供应链风险</td><td>本地 server 依赖被替换</td><td>固定版本、校验来源、最小进程权限、依赖扫描</td></tr>
+            </tbody>
+          </table>
+          <h3>危险操作分级</h3>
+          <ul>
+            <li><strong>低风险：</strong>读取公开资料或执行无副作用计算，可以依据用户设置自动执行。</li>
+            <li><strong>中风险：</strong>读取私有数据或产生有限费用，应显示目标、字段与范围。</li>
+            <li><strong>高风险：</strong>删除、发布、付款、权限变更或批量修改，必须逐次确认并提供明确后果。</li>
+          </ul>
+          <h3>审计事件建议结构</h3>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制审计事件示例">复制</button>
+            <pre><code class="language-json">{
+  "timestamp": "2026-09-21T10:15:00Z",
+  "trace_id": "tr_8f2c",
+  "actor": { "type": "user", "id": "u_104" },
+  "server": "ticket-service",
+  "tool": "create_ticket",
+  "argument_digest": "sha256:…",
+  "authorization": {
+    "scopes": ["tickets:write"],
+    "user_confirmed": true
+  },
+  "outcome": "success",
+  "duration_ms": 184
+}</code></pre>
+          </div>
+          <p>审计日志应避免记录完整提示、凭据和敏感参数。需要调查时，可以依靠受控的关联标识定位受保护记录。日志的保存期限、访问权限与删除策略应符合组织要求。</p>
+        </section>
+
+        <section id="production" aria-labelledby="production-title">
+          <p class="section-kicker">15 · 生产设计</p>
+          <h2 id="production-title">可靠性、可观测性与兼容性</h2>
+          <table>
+            <caption>生产检查主题</caption>
+            <thead><tr><th scope="col">主题</th><th scope="col">设计要求</th><th scope="col">验证方法</th></tr></thead>
+            <tbody>
+              <tr><td>幂等性</td><td>写工具接受幂等键；重复请求返回同一业务结果</td><td>以同一键并发请求两次</td></tr>
+              <tr><td>超时</td><td>设置总超时与下游分段超时，并支持取消</td><td>注入延迟与无响应依赖</td></tr>
+              <tr><td>重试</td><td>只重试可安全重试的错误；采用退避和随机扰动</td><td>模拟 429、502 和连接中断</td></tr>
+              <tr><td>分页</td><td>使用不透明 cursor；限制单页大小；保持稳定排序</td><td>在数据变化期间遍历多页</td></tr>
+              <tr><td>结构化输出</td><td>声明输出 Schema，并让文本与结构化字段语义一致</td><td>对结果执行 Schema 验证</td></tr>
+              <tr><td>可观测性</td><td>记录 trace、方法、耗时、状态和受控错误类别</td><td>从 host 到下游服务关联一次请求</td></tr>
+              <tr><td>版本</td><td>固定 SDK；声明协议版本；记录破坏性变更</td><td>对支持的版本执行契约测试</td></tr>
+              <tr><td>兼容性</td><td>未知字段应按规范处理；能力使用前先检查声明</td><td>使用新旧 client 组合测试</td></tr>
+            </tbody>
+          </table>
+          <h3>幂等工具的输入设计</h3>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制幂等工具 Schema">复制</button>
+            <pre><code class="language-json">{
+  "name": "create_ticket",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+      "idempotencyKey": {
+        "type": "string",
+        "minLength": 16,
+        "maxLength": 128
+      }
+    },
+    "required": ["title", "idempotencyKey"],
+    "additionalProperties": false
+  }
+}</code></pre>
+          </div>
+          <h3>分页结果</h3>
+          <div class="code-block">
+            <button class="copy-code" type="button" aria-label="复制分页结果">复制</button>
+            <pre><code class="language-json">{
+  "resources": [
+    { "uri": "report://2026/001", "name": "月度报告 001" }
+  ],
+  "nextCursor": "opaque-cursor-value"
+}</code></pre>
+          </div>
+          <h3>指标与追踪</h3>
+          <ul>
+            <li>按 server、method 和结果类别统计请求量、错误率与延迟分位数。</li>
+            <li>区分协议错误、输入错误、权限错误、下游错误、超时和用户取消。</li>
+            <li>关联 host 请求、MCP 请求与下游 API 请求，但是不要把访问令牌作为关联值。</li>
+            <li>为工具列表变更和权限配置变更设置审计事件。</li>
+          </ul>
+          <p>重试间隔示例为 <code>min(cap, base × 2^attempt) + random_jitter</code>。但是只有在操作具有幂等保证或尚未产生副作用时，client 才能自动重试。</p>
+        </section>
+
+        <section id="decisions" aria-labelledby="decisions-title">
+          <p class="section-kicker">16 · 选择</p>
+          <h2 id="decisions-title">常见误区与原语选择指南</h2>
+          <h3>常见误区</h3>
+          <dl class="misconceptions">
+            <dt>“MCP 是模型插件市场。”</dt>
+            <dd>不准确。MCP 是通信协议；服务发现、分发、信誉和计费可以由其他系统实现。</dd>
+            <dt>“采用 MCP 后，模型会正确使用所有工具。”</dt>
+            <dd>不准确。MCP 规范化工具描述和调用，但是模型选择、权限策略与结果验证仍由 host 负责。</dd>
+            <dt>“所有能力都应定义为工具。”</dt>
+            <dd>不准确。只读且可寻址的数据通常更适合作为资源；用户主动选择的消息模板更适合作为提示。</dd>
+            <dt>“本地 stdio server 天然安全。”</dt>
+            <dd>不准确。本地进程可以读取继承的环境变量与文件权限，因此仍需最小权限和来源校验。</dd>
+            <dt>“HTTP 传输本身已经提供业务授权。”</dt>
+            <dd>不准确。TLS 保护传输，OAuth 提供授权框架，业务服务仍需检查租户、对象和操作权限。</dd>
+            <dt>“2026 版仍需要 initialize 握手和会话标识。”</dt>
+            <dd>不准确。修订版 <code>2026-07-28</code> 已移除协议级握手与会话，每个请求携带版本和客户端能力。</dd>
+          </dl>
+          <h3>选择流程</h3>
+          <table>
+            <caption>Tool、Resource 与 Prompt 决策表</caption>
+            <thead><tr><th scope="col">问题</th><th scope="col">是</th><th scope="col">否</th></tr></thead>
+            <tbody>
+              <tr><td>是否可能产生副作用、费用或外部 API 调用？</td><td>选择 Tool</td><td>继续判断</td></tr>
+              <tr><td>结果是否由 URI 标识，并且主要用于读取？</td><td>选择 Resource</td><td>继续判断</td></tr>
+              <tr><td>同类资源是否需要 URI 参数？</td><td>增加 Resource Template</td><td>使用固定 Resource</td></tr>
+              <tr><td>内容是否是由用户主动选择的消息模板？</td><td>选择 Prompt</td><td>重新审查需求</td></tr>
+            </tbody>
+          </table>
+          <p>一个业务功能可以同时使用多种原语。例如，客户资料可以作为资源，创建工单可以作为工具，事故复盘格式可以作为提示。各原语应具有单一且清楚的职责。</p>
+        </section>
+
+        <section id="exercises" aria-labelledby="exercises-title">
+          <p class="section-kicker">17 · 实践</p>
+          <h2 id="exercises-title">从入门到高级的练习</h2>
+          <div class="exercise-grid">
+            <article class="exercise-card">
+              <h3>练习 1：识别消息类型</h3>
+              <p><strong>级别：</strong>入门</p>
+              <p>为请求、成功响应、错误响应和通知各写一条 JSON-RPC 消息。检查请求标识是否唯一，并确认通知没有 <code>id</code>。</p>
+              <details><summary>验收标准</summary><p>四条消息都能通过 JSON 解析；响应标识与请求一致；错误包含整数代码和消息。</p></details>
+            </article>
+            <article class="exercise-card">
+              <h3>练习 2：设计原语</h3>
+              <p><strong>级别：</strong>入门</p>
+              <p>为“查询订单、取消订单、生成投诉分析模板”分别选择 Tool、Resource 或 Prompt，并说明用户控制方式。</p>
+              <details><summary>参考方向</summary><p>查询订单适合资源或只读工具；取消订单是高风险工具；分析模板适合提示。具体选择取决于寻址方式和产品交互。</p></details>
+            </article>
+            <article class="exercise-card">
+              <h3>练习 3：扩展 Python 服务</h3>
+              <p><strong>级别：</strong>中级</p>
+              <p>增加 <code>create_ticket</code> 工具。要求验证标题长度、使用幂等键，并以结构化结果返回工单标识和状态。</p>
+              <details><summary>验收标准</summary><p>重复使用同一幂等键时只创建一条记录；无效输入不产生写操作；工具描述明确说明副作用。</p></details>
+            </article>
+            <article class="exercise-card">
+              <h3>练习 4：Inspector 边界测试</h3>
+              <p><strong>级别：</strong>中级</p>
+              <p>测试缺失字段、额外字段、极大数字、空字符串、并发调用和取消。记录每项预期结果与实际结果。</p>
+              <details><summary>验收标准</summary><p>错误可区分且不含秘密；服务在失败后仍可处理新请求；取消不会留下不一致数据。</p></details>
+            </article>
+            <article class="exercise-card">
+              <h3>练习 5：实现 MRTR</h3>
+              <p><strong>级别：</strong>高级</p>
+              <p>让工具在缺少确认时返回 elicitation 输入请求。client 拒绝时不得执行；接受时使用新请求标识和原始 <code>requestState</code> 重试。</p>
+              <details><summary>验收标准</summary><p>三种用户结果均已处理：接受、拒绝、取消。server 不解析 client 提供的伪造状态，并重新检查权限。</p></details>
+            </article>
+            <article class="exercise-card">
+              <h3>练习 6：生产故障演练</h3>
+              <p><strong>级别：</strong>高级</p>
+              <p>模拟 OAuth scope 不足、下游 429、响应超时和重复 POST。为每种情况确定重试、用户提示、指标与审计字段。</p>
+              <details><summary>验收标准</summary><p>不会自动重试非幂等写操作；令牌不进入日志；错误指标可以按类型聚合；重复请求不会产生重复业务对象。</p></details>
+            </article>
+          </div>
+        </section>
+
+        <section id="glossary" aria-labelledby="glossary-title">
+          <p class="section-kicker">18 · 参考</p>
+          <h2 id="glossary-title">术语表、发布前清单与官方来源</h2>
+          <h3>术语表</h3>
+          <dl class="glossary-list">
+            <dt>MCP</dt><dd>Model Context Protocol，用于 LLM 应用与外部能力通信的开放协议。</dd>
+            <dt>Host</dt><dd>管理模型、用户交互、安全策略和多个 MCP client 的应用。</dd>
+            <dt>Client</dt><dd>由 host 管理，并与单个 MCP server 通信的协议组件。</dd>
+            <dt>Server</dt><dd>通过 MCP 公开工具、资源、提示或其他能力的本地进程或远程服务。</dd>
+            <dt>Primitive</dt><dd>协议定义的基础能力类型，例如 tool、resource 和 prompt。</dd>
+            <dt>Capability</dt><dd>一方明确声明支持的可选协议功能。</dd>
+            <dt>JSON-RPC</dt><dd>MCP 数据层采用的远程过程调用消息格式。</dd>
+            <dt>stdio</dt><dd>通过子进程标准输入与标准输出传输消息的方式。</dd>
+            <dt>Streamable HTTP</dt><dd>以独立 HTTP POST 承载消息，并允许响应采用 JSON 或 SSE 的传输方式。</dd>
+            <dt>SSE</dt><dd>Server-Sent Events，服务端在 HTTP 响应中连续发送事件的格式。</dd>
+            <dt>MRTR</dt><dd>Multi Round-Trip Requests。server 返回额外输入请求，client 获取结果后重试原方法。</dd>
+            <dt>Elicitation</dt><dd>server 请求用户提供结构化信息或完成受控外部交互的客户端能力。</dd>
+            <dt>Sampling</dt><dd>server 请求 client 使用其模型生成内容的能力；在本协议修订版中已弃用。</dd>
+            <dt>Roots</dt><dd>client 声明可供 server 参考的文件系统根 URI；在本协议修订版中已弃用。</dd>
+            <dt>Scope</dt><dd>访问令牌授予的一组权限范围。</dd>
+            <dt>Audience</dt><dd>访问令牌预期服务的资源标识。资源服务器必须验证该值。</dd>
+            <dt>Idempotency</dt><dd>相同操作重复提交时，不会产生额外业务副作用的性质。</dd>
+          </dl>
+
+          <h3>发布前清单</h3>
+          <ul class="checklist">
+            <li><label><input type="checkbox"> 已固定并记录 MCP SDK 版本。</label></li>
+            <li><label><input type="checkbox"> 已声明和验证协议版本与能力。</label></li>
+            <li><label><input type="checkbox"> 工具描述明确说明副作用、权限和参数。</label></li>
+            <li><label><input type="checkbox"> 所有输入与结构化输出均执行 Schema 验证。</label></li>
+            <li><label><input type="checkbox"> 高风险操作要求逐次用户确认。</label></li>
+            <li><label><input type="checkbox"> HTTP server 验证 issuer、audience、scope、有效期和签名。</label></li>
+            <li><label><input type="checkbox"> stdout 不包含 stdio 协议以外的文本。</label></li>
+            <li><label><input type="checkbox"> 已设置消息大小、并发数、步骤数和时间限制。</label></li>
+            <li><label><input type="checkbox"> 重试策略区分幂等与非幂等操作。</label></li>
+            <li><label><input type="checkbox"> 日志不包含令牌、完整提示或敏感参数。</label></li>
+            <li><label><input type="checkbox"> 已使用 Inspector 检查正常、边界与失败场景。</label></li>
+            <li><label><input type="checkbox"> 已完成协议版本与 SDK 升级的契约测试。</label></li>
+          </ul>
+
+          <h3>官方来源</h3>
+          <p>以下来源是本文的主要依据。协议规范高于教程示例，SDK 仓库与其版本文档高于未固定版本的代码片段。</p>
+          <ol class="references">
+            <li><a href="https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro">MCP 入门介绍（2026-07-28）</a></li>
+            <li><a href="https://modelcontextprotocol.io/docs/2026-07-28/learn/architecture">MCP 架构说明（2026-07-28）</a></li>
+            <li><a href="https://modelcontextprotocol.io/specification/2026-07-28">MCP 协议规范（2026-07-28）</a></li>
+            <li><a href="https://modelcontextprotocol.io/docs/2026-07-28/develop/build-server">官方服务端构建指南</a></li>
+            <li><a href="https://modelcontextprotocol.io/docs/2026-07-28/develop/build-client">官方客户端构建指南</a></li>
+            <li><a href="https://modelcontextprotocol.io/docs/2026-07-28/tools/inspector">MCP Inspector 文档</a></li>
+            <li><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization">MCP 授权规范</a></li>
+            <li><a href="https://github.com/modelcontextprotocol/python-sdk">官方 Python SDK</a></li>
+            <li><a href="https://github.com/modelcontextprotocol/typescript-sdk">官方 TypeScript SDK</a></li>
+          </ol>
+          <p class="final-note">阅读规范时应注意版本路径。旧版文章可能仍描述 <code>initialize</code> 握手、<code>Mcp-Session-Id</code> 或独立的服务端反向请求；这些内容不适用于 <code>2026-07-28</code> 的无会话请求模型。</p>
+        </section>
+      </article>
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <p>本文用于协议学习。部署前请依据业务数据、权限范围和合规要求完成独立安全评审。</p>
+  </footer>
+
+  <a id="back-to-top" href="#top" aria-label="返回页面顶部">返回顶部</a>
+  <noscript><p class="noscript-note">JavaScript 已停用。全部正文和章节链接仍可使用；主题切换、复制按钮、阅读进度与活动章节提示不可用。</p></noscript>
+</body>
+</html>
